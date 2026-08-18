@@ -26,10 +26,34 @@ button{border:0;border-radius:9px;padding:11px 13px;font-weight:bold;cursor:poin
 .progress{height:20px;background:#e2e7eb;border-radius:20px;overflow:hidden;margin:12px 0 6px}
 .bar{height:100%;background:#2878b5;transition:.25s}
 .percent{text-align:center;font-weight:bold;margin-bottom:15px}
+.top-space-info{
+  width:min(100%,720px);
+  margin:0 auto 8px;
+  padding:8px 12px;
+  background:#fff;
+  border:1px solid #87939b;
+  border-radius:7px;
+  font-size:11px;
+  line-height:1.35;
+  text-align:center;
+  color:#17202a;
+  display:flex;
+  justify-content:center;
+  gap:18px;
+  flex-wrap:wrap;
+}
+.top-space-info b{width:100%;font-size:12px}
 .door-wrap{background:#dce2e6;padding:18px;border-radius:14px}
 .door{position:relative;margin:auto;background:#fff;border:6px solid #56636d;width:min(100%,720px);aspect-ratio:2340/2325}
 .box{position:absolute;border:2px solid #17324d;background:rgba(49,126,181,.78);color:#fff;font-size:10px;font-weight:bold;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden}
 .dim{text-align:center;font-size:12px;color:#66737d;margin-top:8px}
+.loading-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px}
+.loading-header h2{margin:0}
+.save-btn{background:#2878b5;color:#fff;border:0;border-radius:9px;padding:10px 13px;font-weight:bold;cursor:pointer}
+.save-btn:hover{filter:brightness(.95)}
+.load-select,.load-qty{width:100%;padding:7px;border:1px solid #cbd4dc;border-radius:7px;background:#fff;font-size:12px}
+.load-select{min-width:180px}
+.load-qty{min-width:70px}
 table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
 th,td{padding:8px 5px;border-bottom:1px solid #e4e8eb;text-align:left}
 .note{font-size:12px;color:#68747d;line-height:1.45}
@@ -48,7 +72,30 @@ th,td{padding:8px 5px;border-bottom:1px solid #e4e8eb;text-align:left}
 .option:hover{background:#edf3f7}
 .option-text{flex:1}.option-text strong{display:block;font-size:13px}.option-text span{font-size:11px;color:#68747d}
 .placeholder-img{display:flex;align-items:center;justify-content:center;font-size:19px;color:#8b969d}
-@media(max-width:850px){.layout{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.dropdown-menu{max-height:360px}}
+.full-message{margin-top:12px;padding:12px;border-radius:10px;background:#fde8e6;border:1px solid #e3a39d;color:#9d251c;text-align:center;font-size:13px;line-height:1.4}
+
+@media print{
+  @page{size:A4 portrait;margin:10mm}
+  body{background:#fff}
+  header{background:#17324d !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  main{max-width:none;padding:0}
+  .layout{display:block}
+  .card{box-shadow:none;border-radius:0;padding:8px}
+  .layout>.card:first-child{display:none}
+  .save-btn,.danger,.load-select,.load-qty{display:none !important}
+  .loading-header{margin-top:12px}
+  .door-wrap{background:#fff;padding:8px;border:1px solid #ddd}
+  .door{width:100%;max-width:180mm}
+  .top-space-info{width:100%;max-width:180mm}
+  table{font-size:11px}
+  th,td{padding:5px}
+}
+@media(max-width:850px){
+.layout{grid-template-columns:1fr}
+.stats{grid-template-columns:1fr 1fr}
+.dropdown-menu{max-height:360px}
+.top-space-info{width:100%;gap:8px}
+}
 </style>
 </head>
 <body>
@@ -91,8 +138,12 @@ th,td{padding:8px 5px;border-bottom:1px solid #e4e8eb;text-align:left}
 <input id="qty" type="number" min="1" value="1">
 
 <div class="actions">
-<button class="primary" onclick="addItem()">Ajouter</button>
+<button id="addBtn" class="primary" onclick="addItem()">Ajouter</button>
 <button class="danger" onclick="resetAll()">Tout effacer</button>
+</div>
+<div id="fullMessage" class="full-message" style="display:none">
+⚠️ <b>CONTENEUR PLEIN</b><br>
+Il n'est plus possible d'ajouter de caisse dans l'espace disponible.
 </div>
 
 <p class="note">
@@ -111,12 +162,20 @@ Les dimensions sont automatiquement mises à jour avec la caisse sélectionnée.
 <div id="pct" class="percent"></div>
 
 <h2>👁️ Vue depuis les portes</h2>
+<div id="topSpaceInfo" class="top-space-info">
+  <b>ESPACE LIBRE EN HAUT</b>
+  <span>Hauteur : <strong id="topHeight">0 mm</strong></span>
+  <span>Largeur max disponible : <strong id="topWidth">0 mm</strong></span>
+</div>
 <div class="door-wrap">
 <div id="door" class="door"></div>
 <div id="dim" class="dim"></div>
 </div>
 
-<h2 style="margin-top:18px">Chargement</h2>
+<div class="loading-header">
+  <h2>Chargement</h2>
+  <button class="save-btn" onclick="savePDF()">🖨️ Enregistrer / imprimer en PDF</button>
+</div>
 <table>
 <thead><tr><th>Référence</th><th>Dimensions</th><th>Qté</th><th>Surface</th><th></th></tr></thead>
 <tbody id="rows"></tbody>
@@ -168,15 +227,122 @@ function addItem(){
   if(!selected){alert("Choisis d'abord une caisse dans la liste.");return}
   const w=+document.getElementById("bw").value;
   const h=+document.getElementById("bh").value;
-  const q=Math.max(1,+document.getElementById("qty").value||1);
-  const old=items.find(x=>x.ref===selected.ref&&x.w===w&&x.h===h);
-  if(old) old.qty+=q;
-  else items.push({ref:selected.ref,w,h,qty:q,image:selected.image});
+  const requested=Math.max(1,+document.getElementById("qty").value||1);
+  let added=0;
+
+  for(let n=0;n<requested;n++){
+    const candidate=items.map(x=>({...x}));
+    const old=candidate.find(x=>x.ref===selected.ref&&x.w===w&&x.h===h);
+    if(old) old.qty+=1;
+    else candidate.push({ref:selected.ref,w,h,qty:1,image:selected.image});
+
+    const result=calculateLayout(candidate);
+    if(result.placedCount===countCrates(candidate)){
+      items=candidate;
+      added++;
+    }else{
+      break;
+    }
+  }
+
   render();
+
+  if(added<requested){
+    alert("Le conteneur n'a plus assez d'espace pour ajouter "+(requested-added)+" caisse(s) de "+selected.ref+".");
+  }
+}
+function changeItemRef(index, ref){
+  const selectedBox=catalog.find(c=>c.ref===ref);
+  if(!selectedBox) return;
+
+  const oldItem=items[index];
+  const candidate=items.map(x=>({...x}));
+  candidate[index]={
+    ref:selectedBox.ref,
+    w:selectedBox.w,
+    h:selectedBox.h,
+    qty:oldItem.qty,
+    image:selectedBox.image
+  };
+
+  const test=calculateLayout(candidate);
+  if(test.placedCount===countCrates(candidate)){
+    items=candidate;
+    render();
+  }else{
+    alert("Cette modification ne rentre pas dans le conteneur avec le chargement actuel.");
+    render();
+  }
+}
+
+function changeItemQty(index, value){
+  const qty=Math.max(0,Math.floor(Number(value)||0));
+  if(qty===0){
+    items.splice(index,1);
+    render();
+    return;
+  }
+
+  const candidate=items.map(x=>({...x}));
+  candidate[index].qty=qty;
+
+  const test=calculateLayout(candidate);
+  if(test.placedCount===countCrates(candidate)){
+    items=candidate;
+    render();
+  }else{
+    alert("Cette quantité dépasse l'espace disponible dans le conteneur.");
+    render();
+  }
+}
+
+function savePDF(){
+  window.print();
 }
 
 function removeItem(i){items.splice(i,1);render()}
 function resetAll(){items=[];render()}
+
+function countCrates(list){
+  return list.reduce((sum,x)=>sum+x.qty,0);
+}
+
+function calculateLayout(list){
+  const W=+document.getElementById("cw").value||2340;
+  const H=+document.getElementById("ch").value||2325;
+  let crates=[];
+  list.forEach(it=>{
+    for(let n=0;n<it.qty;n++) crates.push({ref:it.ref,w:it.w,h:it.h,image:it.image});
+  });
+  crates.sort((a,b)=>b.w-a.w || b.h-a.h);
+
+  let remaining=crates.slice(), rowsData=[], cumulativeH=0;
+  while(remaining.length){
+    let row=[], usedW=0;
+    for(const c of remaining){
+      if(c.w<=W && c.h<=H && usedW+c.w<=W){
+        row.push(c); usedW+=c.w;
+      }
+    }
+    if(!row.length) break;
+    row.sort((a,b)=>b.w-a.w || b.h-a.h);
+    const rowH=Math.max(...row.map(c=>c.h));
+    if(cumulativeH+rowH>H) break;
+    rowsData.push({crates:row,usedW,remainingW:W-usedW,height:rowH});
+    for(const used of row){
+      const idx=remaining.indexOf(used);
+      if(idx>=0) remaining.splice(idx,1);
+    }
+    cumulativeH+=rowH;
+  }
+  return {
+    rows:rowsData,
+    placedCount:rowsData.reduce((s,r)=>s+r.crates.length,0),
+    totalCount:crates.length,
+    remainingCrates:remaining,
+    remainingHeight:Math.max(0,H-cumulativeH)
+  };
+}
 
 function render(){
   const W=+document.getElementById("cw").value||2340;
@@ -187,62 +353,8 @@ function render(){
   const door=document.getElementById("door");
   door.innerHTML="";
 
-  // Expand quantities into individual crates, then sort widest first.
-  let crates=[];
-  items.forEach(it=>{
-    for(let n=0;n<it.qty;n++){
-      crates.push({ref:it.ref,w:it.w,h:it.h,image:it.image});
-    }
-  });
-  crates.sort((a,b)=>b.w-a.w || b.h-a.h);
-
-  // Build rows from the bottom upward. Each row uses the widest crates
-  // that can fit side-by-side; the row height is the tallest crate in it.
-  let remaining=crates.slice();
-  let rowsData=[];
-
-  while(remaining.length){
-    let row=[];
-    let usedW=0;
-
-    for(let i=0;i<remaining.length;){
-      const c=remaining[i];
-
-      if(c.w<=W && c.h<=H && usedW+c.w<=W){
-        row.push(c);
-        usedW+=c.w;
-        i++;
-      }else{
-        i++;
-      }
-    }
-
-    if(!row.length){
-      // No crate can be placed in the current remaining height/width.
-      break;
-    }
-
-    // Keep each row ordered widest -> narrowest.
-    row.sort((a,b)=>b.w-a.w || b.h-a.h);
-
-    const rowH=Math.max(...row.map(c=>c.h));
-    rowsData.push({
-      crates:row,
-      usedW,
-      remainingW:W-usedW,
-      height:rowH
-    });
-
-    // Remove exactly the crates used in this row.
-    for(const used of row){
-      const idx=remaining.indexOf(used);
-      if(idx>=0) remaining.splice(idx,1);
-    }
-
-    // Stop if the next row would exceed the opening height.
-    const usedHeight=rowsData.reduce((s,r)=>s+r.height,0);
-    if(usedHeight>=H) break;
-  }
+  const layout=calculateLayout(items);
+  const rowsData=layout.rows;
 
   let usedArea=0;
   let cumulativeH=0;
@@ -306,33 +418,46 @@ function render(){
     cumulativeH+=row.height;
   });
 
-  // Top information band: remaining width and height above the last row.
+  // Information above the frame: height remaining and maximum free width
+  // available at the top after the placed rows.
   const topRemainingH=Math.max(0,H-cumulativeH);
-  const topLabel=document.createElement("div");
-  topLabel.style.position="absolute";
-  topLabel.style.left="4px";
-  topLabel.style.right="4px";
-  topLabel.style.top="4px";
-  topLabel.style.padding="5px 7px";
-  topLabel.style.background="rgba(255,255,255,.94)";
-  topLabel.style.border="1px solid #7d8991";
-  topLabel.style.borderRadius="6px";
-  topLabel.style.fontSize="10px";
-  topLabel.style.fontWeight="bold";
-  topLabel.style.textAlign="center";
-  topLabel.style.zIndex="10";
-  const lastRow=rowsData[rowsData.length-1];
-  const topRemainingW=lastRow ? lastRow.remainingW : W;
-  topLabel.innerHTML=
-    "ESPACE LIBRE EN HAUT — Hauteur : "+topRemainingH+
-    " mm &nbsp;|&nbsp; Largeur libre : "+topRemainingW+" mm";
-  door.appendChild(topLabel);
+  const topWidthCandidates=rowsData.length
+    ? rowsData.map(r=>r.remainingW)
+    : [W];
+  const topRemainingW=Math.max(...topWidthCandidates);
+
+  document.getElementById("topHeight").textContent=topRemainingH+" mm";
+  document.getElementById("topWidth").textContent=topRemainingW+" mm";
 
   if(!rowsData.length){
     door.innerHTML='<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#78838b;font-weight:bold">OUVERTURE DU CONTENEUR</div>';
   }
 
   const percent=Math.min(100,usedArea/total*100);
+
+  // Le conteneur est réellement plein uniquement si aucune caisse
+  // disponible dans le catalogue ne peut encore être placée.
+  let isFull = false;
+  if(items.length>0){
+    isFull = true;
+    for(const c of catalog){
+      const candidate=items.map(x=>({...x}));
+      candidate.push({ref:c.ref,w:c.w,h:c.h,qty:1,image:c.image});
+      const test=calculateLayout(candidate);
+      if(test.placedCount===countCrates(candidate)){
+        isFull=false;
+        break;
+      }
+    }
+  }
+
+  const fullBox=document.getElementById("fullMessage");
+  const addBtn=document.getElementById("addBtn");
+  fullBox.style.display=isFull ? "block" : "none";
+  addBtn.disabled=isFull;
+  addBtn.style.opacity=isFull ? ".5" : "1";
+  addBtn.style.cursor=isFull ? "not-allowed" : "pointer";
+
   document.getElementById("surface").textContent=(total/1e6).toFixed(4)+" m²";
   document.getElementById("used").textContent=(usedArea/1e6).toFixed(4)+" m²";
   document.getElementById("rest").textContent=Math.max(0,(total-usedArea)/1e6).toFixed(4)+" m²";
@@ -345,9 +470,21 @@ function render(){
   rows.innerHTML="";
   items.forEach((it,i)=>{
     const tr=document.createElement("tr");
-    tr.innerHTML="<td>"+escapeHtml(it.ref)+"</td><td>"+it.w+" × "+it.h+
-      " mm</td><td>"+it.qty+"</td><td>"+(it.w*it.h*it.qty/1e6).toFixed(4)+
-      " m²</td><td><button class='danger' onclick='removeItem("+i+")'>×</button></td>";
+
+    const refOptions=catalog.map(c =>
+      '<option value="'+escapeHtml(c.ref)+'" '+(c.ref===it.ref?'selected':'')+'>'+
+      escapeHtml(c.ref)+' — '+c.w+' × '+c.h+' mm</option>'
+    ).join("");
+
+    tr.innerHTML=
+      "<td><select class='load-select' onchange='changeItemRef("+i+",this.value)'>"+
+      refOptions+"</select></td>"+
+      "<td>"+it.w+" × "+it.h+" mm</td>"+
+      "<td><input class='load-qty' type='number' min='0' value='"+it.qty+
+      "' onchange='changeItemQty("+i+",this.value)'></td>"+
+      "<td>"+(it.w*it.h*it.qty/1e6).toFixed(4)+" m²</td>"+
+      "<td><button class='danger' onclick='removeItem("+i+")'>×</button></td>";
+
     rows.appendChild(tr);
   });
 }
